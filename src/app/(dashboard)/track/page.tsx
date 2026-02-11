@@ -8,15 +8,17 @@ import {
     Pause,
     Square,
     MapPin,
-    Clock,
     Gauge,
-    TrendingUp,
     Loader2,
-    Navigation,
     Maximize2,
+    Minimize2,
+    Footprints,
+    Bike,
+    MountainSnow,
 } from "lucide-react";
-import { formatDistance, formatDuration, formatPace, formatSpeed, getDistanceBetweenPoints, calculateCalories } from "@/lib/utils";
+import { formatDistance, formatDuration, formatPace, getDistanceBetweenPoints, calculateCalories } from "@/lib/utils";
 import dynamic from "next/dynamic";
+import { cn } from "@/lib/utils";
 
 const TrackingMap = dynamic(() => import("@/components/tracking-map"), {
     ssr: false,
@@ -28,6 +30,14 @@ const TrackingMap = dynamic(() => import("@/components/tracking-map"), {
 });
 
 type TrackingState = "idle" | "tracking" | "paused" | "saving";
+type ActivityType = "run" | "walk" | "cycle" | "hike";
+
+const activityConfig: Record<ActivityType, { icon: React.ReactNode; label: string }> = {
+    run: { icon: <img src="https://img.icons8.com/ios-filled/50/ffffff/running.png" className="w-5 h-5 invert" alt="run" />, label: "Run" },
+    walk: { icon: <Footprints className="w-5 h-5" />, label: "Walk" },
+    cycle: { icon: <Bike className="w-5 h-5" />, label: "Cycle" },
+    hike: { icon: <MountainSnow className="w-5 h-5" />, label: "Hike" },
+};
 
 export default function TrackPage() {
     const [state, setState] = useState<TrackingState>("idle");
@@ -36,7 +46,7 @@ export default function TrackPage() {
     const [distance, setDistance] = useState(0);
     const [duration, setDuration] = useState(0);
     const [speeds, setSpeeds] = useState<number[]>([]);
-    const [activityType, setActivityType] = useState<"run" | "walk" | "cycle" | "hike">("run");
+    const [activityType, setActivityType] = useState<ActivityType>("run");
     const [title, setTitle] = useState("");
     const [isFullscreen, setIsFullscreen] = useState(false);
     const watchIdRef = useRef<number | null>(null);
@@ -107,7 +117,7 @@ export default function TrackPage() {
         const maxSpeed = speeds.length > 0 ? Math.max(...speeds) : 0;
         const calories = calculateCalories(distance, duration);
 
-        const activityTitle = title || `${activityType === "run" ? "Afternoon Run" : activityType === "walk" ? "Walk" : activityType === "cycle" ? "Ride" : "Hike"}`;
+        const activityTitle = title || `${activityType === "run" ? "Run" : activityType === "walk" ? "Walk" : activityType === "cycle" ? "Ride" : "Hike"} • ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
 
         try {
             const res = await fetch("/api/activities", {
@@ -144,136 +154,169 @@ export default function TrackPage() {
     }, []);
 
     const avgSpeed = speeds.length > 0 ? speeds.reduce((a, b) => a + b, 0) / speeds.length : 0;
-    const currentSpeed = speeds.length > 0 ? speeds[speeds.length - 1] : 0;
 
     return (
-        <div className={`${isFullscreen ? "fixed inset-0 z-50 bg-background" : ""}`}>
-            <div className={`${isFullscreen ? "h-screen" : "h-[calc(100vh-3.5rem)] lg:h-screen"} flex flex-col`}>
-                {/* Map */}
-                <div className="flex-1 relative">
-                    <TrackingMap coordinates={coordinates} currentPos={currentPos} isTracking={state === "tracking"} />
+        <div className={cn("relative flex flex-col transition-all duration-300", isFullscreen ? "fixed inset-0 z-50 bg-background" : "h-[calc(100vh-4rem)] lg:h-screen")}>
 
-                    {/* Fullscreen toggle */}
-                    <button
-                        onClick={() => setIsFullscreen(!isFullscreen)}
-                        className="absolute top-4 right-4 z-30 bg-card/90 backdrop-blur-sm border border-border rounded-lg p-2 hover:bg-muted transition-colors cursor-pointer"
+            {/* Map Layer */}
+            <div className="absolute inset-0 z-0">
+                <TrackingMap coordinates={coordinates} currentPos={currentPos} isTracking={state === "tracking"} />
+                {/* Gradient Overlays for integration */}
+                <div className="absolute top-0 left-0 right-0 h-32 bg-gradient-to-b from-background/80 to-transparent pointer-events-none" />
+                <div className="absolute bottom-0 left-0 right-0 h-64 bg-gradient-to-t from-background via-background/80 to-transparent pointer-events-none" />
+            </div>
+
+            {/* Header Controls */}
+            <div className="relative z-10 p-4 flex justify-between items-start pointer-events-none">
+                {state === "tracking" && (
+                    <motion.div
+                        initial={{ opacity: 0, x: -20 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        className="flex items-center gap-2 bg-black/40 backdrop-blur-md text-white px-3 py-1.5 rounded-full border border-white/10 shadow-lg"
                     >
-                        <Maximize2 className="w-5 h-5" />
-                    </button>
+                        <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+                        <span className="text-xs font-bold tracking-wider">LIVE RECORDING</span>
+                    </motion.div>
+                )}
 
-                    {/* Live indicator */}
-                    {state === "tracking" && (
-                        <div className="absolute top-4 left-4 z-30 flex items-center gap-2 bg-red-500/90 backdrop-blur-sm text-white px-3 py-1.5 rounded-full text-sm font-medium">
-                            <div className="w-2 h-2 rounded-full bg-white pulse-ring" />
-                            LIVE
-                        </div>
-                    )}
-                </div>
-
-                {/* Controls Panel */}
-                <motion.div
-                    layout
-                    className="glass border-t border-border p-4 lg:p-6"
+                <button
+                    onClick={() => setIsFullscreen(!isFullscreen)}
+                    className="ml-auto pointer-events-auto w-10 h-10 rounded-full bg-black/40 backdrop-blur-md border border-white/10 flex items-center justify-center hover:bg-black/60 transition-colors shadow-lg"
                 >
-                    {/* Metrics */}
-                    <div className="grid grid-cols-4 gap-3 mb-4">
-                        <div className="text-center">
-                            <div className="text-xs text-muted-foreground mb-1 flex items-center justify-center gap-1">
-                                <MapPin className="w-3 h-3" /> Distance
-                            </div>
-                            <div className="text-lg lg:text-2xl font-bold font-mono">{formatDistance(distance)}</div>
-                        </div>
-                        <div className="text-center">
-                            <div className="text-xs text-muted-foreground mb-1 flex items-center justify-center gap-1">
-                                <Clock className="w-3 h-3" /> Duration
-                            </div>
-                            <div className="text-lg lg:text-2xl font-bold font-mono">{formatDuration(duration)}</div>
-                        </div>
-                        <div className="text-center">
-                            <div className="text-xs text-muted-foreground mb-1 flex items-center justify-center gap-1">
-                                <TrendingUp className="w-3 h-3" /> Pace
-                            </div>
-                            <div className="text-lg lg:text-2xl font-bold font-mono">{formatPace(avgSpeed)}</div>
-                        </div>
-                        <div className="text-center">
-                            <div className="text-xs text-muted-foreground mb-1 flex items-center justify-center gap-1">
-                                <Gauge className="w-3 h-3" /> Speed
-                            </div>
-                            <div className="text-lg lg:text-2xl font-bold font-mono">{formatSpeed(currentSpeed)}</div>
-                        </div>
-                    </div>
+                    {isFullscreen ? <Minimize2 className="w-5 h-5 text-white" /> : <Maximize2 className="w-5 h-5 text-white" />}
+                </button>
+            </div>
 
-                    {/* Activity Type & Title (idle) */}
+            {/* Main Stats Area (Center-Bottom) */}
+            <div className="relative z-10 mt-auto w-full max-w-lg mx-auto p-6 pb-8">
+                <AnimatePresence mode="wait">
+                    {/* Activity Selection (Idle State) */}
                     {state === "idle" && (
-                        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-3 mb-4">
-                            <div className="flex gap-2 justify-center">
-                                {(["run", "walk", "cycle", "hike"] as const).map((t) => (
+                        <motion.div
+                            initial={{ opacity: 0, y: 20 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: 20 }}
+                            className="space-y-6"
+                        >
+                            <div className="glass rounded-2xl p-1.5 flex gap-1">
+                                {(["run", "walk", "cycle", "hike"] as ActivityType[]).map((t) => (
                                     <button
                                         key={t}
                                         onClick={() => setActivityType(t)}
-                                        className={`px-4 py-2 rounded-lg text-sm font-medium capitalize transition-all cursor-pointer ${activityType === t
-                                                ? "bg-accent text-white shadow-lg shadow-accent/20"
-                                                : "bg-muted text-muted-foreground hover:bg-muted/80"
-                                            }`}
+                                        className={cn(
+                                            "flex-1 flex flex-col items-center justify-center gap-1 py-3 rounded-xl transition-all duration-300 relative overflow-hidden",
+                                            activityType === t ? "text-white shadow-lg" : "text-muted-foreground hover:bg-white/5"
+                                        )}
                                     >
-                                        {t}
+                                        {activityType === t && (
+                                            <motion.div
+                                                layoutId="activeTab"
+                                                className="absolute inset-0 bg-accent gradient-accent"
+                                                transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
+                                            />
+                                        )}
+                                        <span className="relative z-10">{activityConfig[t].icon}</span>
+                                        <span className="relative z-10 text-xs font-semibold">{activityConfig[t].label}</span>
                                     </button>
                                 ))}
                             </div>
+
                             <input
                                 type="text"
-                                placeholder="Activity title (optional)"
+                                placeholder="Give it a name (optional)..."
                                 value={title}
                                 onChange={(e) => setTitle(e.target.value)}
-                                className="w-full bg-muted border border-border rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-accent transition-colors"
+                                className="w-full bg-black/40 backdrop-blur-xl border border-white/10 rounded-2xl px-5 py-4 text-white placeholder:text-white/40 focus:outline-none focus:border-accent/50 focus:ring-1 focus:ring-accent/50 transition-all text-center"
                             />
                         </motion.div>
                     )}
 
-                    {/* Action Buttons */}
-                    <div className="flex justify-center gap-4">
-                        <AnimatePresence mode="wait">
-                            {state === "idle" && (
-                                <motion.div key="start" initial={{ scale: 0.8 }} animate={{ scale: 1 }} exit={{ scale: 0.8 }}>
+                    {/* Live Metrics (Active/Paused) */}
+                    {(state === "tracking" || state === "paused") && (
+                        <motion.div
+                            layout
+                            initial={{ opacity: 0, scale: 0.95 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            className="grid grid-cols-2 gap-4 mb-8"
+                        >
+                            {/* Primary Metric - Duration */}
+                            <div className="col-span-2 text-center mb-2">
+                                <p className="text-white/60 text-xs font-bold tracking-widest uppercase mb-1">Time Elapsed</p>
+                                <h2 className="text-7xl font-black text-white tabular-nums tracking-tighter drop-shadow-lg">
+                                    {formatDuration(duration)}
+                                </h2>
+                            </div>
+
+                            {/* Secondary Metrics */}
+                            <div className="bg-black/40 backdrop-blur-xl rounded-2xl p-4 border border-white/10 text-center">
+                                <div className="flex items-center justify-center gap-1 text-accent mb-1">
+                                    <MapPin className="w-3.5 h-3.5" />
+                                    <span className="text-[10px] font-bold uppercase tracking-wider">Distance</span>
+                                </div>
+                                <p className="text-2xl font-bold text-white tabular-nums">{formatDistance(distance)}</p>
+                            </div>
+                            <div className="bg-black/40 backdrop-blur-xl rounded-2xl p-4 border border-white/10 text-center">
+                                <div className="flex items-center justify-center gap-1 text-blue-400 mb-1">
+                                    <Gauge className="w-3.5 h-3.5" />
+                                    <span className="text-[10px] font-bold uppercase tracking-wider">Pace</span>
+                                </div>
+                                <p className="text-2xl font-bold text-white tabular-nums">{formatPace(avgSpeed)}</p>
+                            </div>
+                        </motion.div>
+                    )}
+                </AnimatePresence>
+
+                {/* Control Buttons */}
+                <div className="mt-8 flex justify-center items-center gap-6">
+                    <AnimatePresence mode="wait">
+                        {state === "idle" && (
+                            <motion.div key="start" initial={{ scale: 0.8, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.8, opacity: 0 }}>
+                                <Button
+                                    onClick={startTracking}
+                                    size="lg"
+                                    className="w-20 h-20 rounded-full gradient-accent border-0 shadow-[0_0_40px_-5px_var(--color-accent)] hover:shadow-[0_0_60px_-10px_var(--color-accent)] hover:scale-105 transition-all duration-300"
+                                >
+                                    <Play className="w-8 h-8 ml-1 fill-white text-white" />
+                                </Button>
+                            </motion.div>
+                        )}
+
+                        {(state === "tracking" || state === "paused") && (
+                            <motion.div key="controls" initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="flex gap-6">
+                                {state === "tracking" ? (
                                     <Button
-                                        onClick={startTracking}
-                                        size="lg"
-                                        className="gradient-accent border-0 h-16 w-16 rounded-full shadow-xl shadow-accent/40 glow-accent"
+                                        onClick={pauseTracking}
+                                        className="w-20 h-20 rounded-full bg-yellow-500 hover:bg-yellow-400 text-black border-0 shadow-lg hover:scale-105 transition-all"
                                     >
-                                        <Play className="w-7 h-7 ml-0.5" />
+                                        <Pause className="w-8 h-8 fill-black" />
                                     </Button>
-                                </motion.div>
-                            )}
-                            {state === "tracking" && (
-                                <motion.div key="tracking" initial={{ scale: 0.8 }} animate={{ scale: 1 }} className="flex gap-4">
-                                    <Button onClick={pauseTracking} size="lg" variant="secondary" className="h-16 w-16 rounded-full">
-                                        <Pause className="w-7 h-7" />
+                                ) : (
+                                    <Button
+                                        onClick={resumeTracking}
+                                        className="w-20 h-20 rounded-full bg-green-500 hover:bg-green-400 text-black border-0 shadow-lg hover:scale-105 transition-all"
+                                    >
+                                        <Play className="w-8 h-8 ml-1 fill-black" />
                                     </Button>
-                                    <Button onClick={stopTracking} size="lg" className="bg-red-500 hover:bg-red-600 h-16 w-16 rounded-full">
-                                        <Square className="w-6 h-6" />
-                                    </Button>
-                                </motion.div>
-                            )}
-                            {state === "paused" && (
-                                <motion.div key="paused" initial={{ scale: 0.8 }} animate={{ scale: 1 }} className="flex gap-4">
-                                    <Button onClick={resumeTracking} size="lg" className="gradient-accent border-0 h-16 w-16 rounded-full glow-accent">
-                                        <Play className="w-7 h-7 ml-0.5" />
-                                    </Button>
-                                    <Button onClick={stopTracking} size="lg" className="bg-red-500 hover:bg-red-600 h-16 w-16 rounded-full">
-                                        <Square className="w-6 h-6" />
-                                    </Button>
-                                </motion.div>
-                            )}
-                            {state === "saving" && (
-                                <motion.div key="saving" initial={{ scale: 0.8 }} animate={{ scale: 1 }}>
-                                    <Button disabled size="lg" className="h-16 w-16 rounded-full">
-                                        <Loader2 className="w-7 h-7 animate-spin" />
-                                    </Button>
-                                </motion.div>
-                            )}
-                        </AnimatePresence>
-                    </div>
-                </motion.div>
+                                )}
+
+                                <Button
+                                    onClick={stopTracking}
+                                    className="w-20 h-20 rounded-full bg-red-600 hover:bg-red-500 text-white border-0 shadow-lg hover:scale-105 transition-all"
+                                >
+                                    <Square className="w-8 h-8 fill-white" />
+                                </Button>
+                            </motion.div>
+                        )}
+
+                        {state === "saving" && (
+                            <motion.div key="saving" initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}>
+                                <div className="w-20 h-20 rounded-full bg-black/60 backdrop-blur-xl border border-white/10 flex items-center justify-center">
+                                    <Loader2 className="w-8 h-8 animate-spin text-accent" />
+                                </div>
+                            </motion.div>
+                        )}
+                    </AnimatePresence>
+                </div>
             </div>
         </div>
     );
